@@ -3,7 +3,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { orpc } from "@/utils/orpc";
 
-export const Route = createFileRoute("/")({
+export const Route = createFileRoute("/_app/")({
   component: HomeComponent,
 });
 
@@ -23,8 +23,30 @@ const TITLE_TEXT = `
     ╚═╝       ╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝
  `;
 
+function getApiStatusText({
+  isLoading,
+  isConnected,
+}: {
+  isLoading: boolean;
+  isConnected: boolean;
+}) {
+  if (isLoading) {
+    return "Checking...";
+  }
+
+  if (isConnected) {
+    return "Connected";
+  }
+
+  return "Disconnected";
+}
+
 function HomeComponent() {
   const healthCheck = useQuery(orpc.healthCheck.queryOptions());
+  const apiStatusText = getApiStatusText({
+    isLoading: healthCheck.isLoading,
+    isConnected: !!healthCheck.data,
+  });
 
   return (
     <div className="container mx-auto max-w-3xl px-4 py-2">
@@ -36,12 +58,8 @@ function HomeComponent() {
             <div
               className={`h-2 w-2 rounded-full ${healthCheck.data ? "bg-green-500" : "bg-red-500"}`}
             />
-            <span className="text-sm text-muted-foreground">
-              {healthCheck.isLoading
-                ? "Checking..."
-                : healthCheck.data
-                  ? "Connected"
-                  : "Disconnected"}
+            <span className="text-muted-foreground text-sm">
+              {apiStatusText}
             </span>
           </div>
         </section>
