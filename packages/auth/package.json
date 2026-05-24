@@ -1,0 +1,24 @@
+{
+  "name": "@cutroom/auth",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@cutroom/db": "workspace:*",
+    "@cutroom/env": "workspace:*",
+    "better-auth": "catalog:",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@cutroom/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}
