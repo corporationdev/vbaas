@@ -1,33 +1,27 @@
-import { Toaster } from "@cutroom/ui/components/sonner";
-import { TooltipProvider } from "@cutroom/ui/components/tooltip";
-import type { QueryClient } from "@tanstack/react-query";
-import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import {
   createRootRouteWithContext,
   HeadContent,
   Outlet,
 } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
+import { Toaster } from "@vbaas/ui/components/sonner";
+import { TooltipProvider } from "@vbaas/ui/components/tooltip";
 import { ThemeProvider } from "@/components/theme-provider";
-import type { orpc } from "@/utils/orpc";
 
 import "../index.css";
 
-export interface RouterAppContext {
-  orpc: typeof orpc;
-  queryClient: QueryClient;
-}
+export type RouterAppContext = Record<string, never>;
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
   component: RootComponent,
   head: () => ({
     meta: [
       {
-        title: "cutroom",
+        title: "vbaas",
       },
       {
         name: "description",
-        content: "cutroom is a web application",
+        content: "vbaas is a web application",
       },
     ],
     links: [
@@ -55,7 +49,6 @@ function RootComponent() {
         <Toaster richColors />
       </ThemeProvider>
       <TanStackRouterDevtools position="bottom-left" />
-      <ReactQueryDevtools buttonPosition="bottom-right" position="bottom" />
     </>
   );
 }

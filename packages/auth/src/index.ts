@@ -1,19 +1,43 @@
-import { createDb } from "@cutroom/db";
-import * as schema from "@cutroom/db/schema/auth";
-import { env } from "@cutroom/env/server";
+import { createDb } from "@vbaas/db";
+import {
+  account,
+  accountRelations,
+  session,
+  sessionRelations,
+  user,
+  userRelations,
+  verification,
+} from "@vbaas/db/schema/auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 
-export function createAuth() {
-  const db = createDb();
+const schema = {
+  account,
+  accountRelations,
+  session,
+  sessionRelations,
+  user,
+  userRelations,
+  verification,
+} as const;
+
+export interface AuthConfig {
+  betterAuthSecret: string;
+  betterAuthUrl: string;
+  corsOrigin: string;
+  databaseUrl: string;
+}
+
+export function createAuth(config: AuthConfig) {
+  const db = createDb(config.databaseUrl);
 
   return betterAuth({
     database: drizzleAdapter(db, {
       provider: "pg",
 
-      schema: schema,
+      schema,
     }),
-    trustedOrigins: [env.CORS_ORIGIN],
+    trustedOrigins: [config.corsOrigin],
     emailAndPassword: {
       enabled: true,
     },
@@ -24,8 +48,8 @@ export function createAuth() {
     //     maxAge: 60,
     //   },
     // },
-    secret: env.BETTER_AUTH_SECRET,
-    baseURL: env.BETTER_AUTH_URL,
+    secret: config.betterAuthSecret,
+    baseURL: config.betterAuthUrl,
     advanced: {
       defaultCookieAttributes: {
         sameSite: "none",
