@@ -13,11 +13,14 @@ import { RendererLive, renderComposition } from "./index";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const renderTestDir = join(packageRoot, "tmp", "render-tests");
 const audioPath = join(renderTestDir, "tone.wav");
+const canonicalOutputPath = join(renderTestDir, "canonical-output.mp4");
 const imagePath = join(renderTestDir, "overlay.png");
-const layeredOutputPath = join(renderTestDir, "layered-output.mp4");
 const sourcePath = join(renderTestDir, "source.mp4");
-const outputPath = join(renderTestDir, "media-only-output.mp4");
 const textDecoder = new TextDecoder();
+const tiktokCanvas = {
+  height: 1920,
+  width: 1080,
+} as const;
 
 describe("RendererLive integration", () => {
   beforeAll(async () => {
@@ -36,7 +39,7 @@ describe("RendererLive integration", () => {
       "-f",
       "lavfi",
       "-i",
-      "color=c=blue:s=320x180:r=30:d=1",
+      `color=c=#18204a:s=${tiktokCanvas.width}x${tiktokCanvas.height}:r=30:d=1`,
       "-c:v",
       "libx264",
       "-pix_fmt",
@@ -51,7 +54,7 @@ describe("RendererLive integration", () => {
       "-f",
       "lavfi",
       "-i",
-      "color=c=red:s=160x90",
+      "color=c=red:s=360x360",
       "-frames:v",
       "1",
       imagePath,
@@ -69,92 +72,30 @@ describe("RendererLive integration", () => {
     ]);
   });
 
-  test("renders a real media-only mp4 with ffmpeg", async () => {
+  test("renders video, image overlays, audio, text, and captions", async () => {
     const composition = decodeComposition({
       assets: [
         {
           durationFrames: 30,
           fps: 30,
-          height: 180,
+          height: tiktokCanvas.height,
           id: "source-video",
           source: {
             kind: "file",
             path: "tmp/render-tests/source.mp4",
           },
           type: "video",
-          width: 320,
-        },
-      ],
-      id: "real-media-render",
-      schemaVersion: "0.1",
-      settings: {
-        canvas: {
-          height: 180,
-          width: 320,
-        },
-        fps: 30,
-      },
-      tracks: [
-        {
-          clips: [
-            {
-              durationFrames: 30,
-              id: "source-video-clip",
-              media: {
-                assetId: "source-video",
-              },
-              startFrame: 0,
-              type: "video",
-            },
-          ],
-          id: "visual-track",
-          kind: "visual",
-        },
-      ],
-    });
-
-    const result = await Effect.runPromise(
-      renderComposition({
-        composition,
-        outputPath,
-        projectRoot: packageRoot,
-        quality: "draft",
-      }).pipe(Effect.provide(RendererLive))
-    );
-    const outputStats = await stat(outputPath);
-    const probe = await probeVideo(outputPath);
-
-    expect(result.outputPath).toBe(outputPath);
-    expect(outputStats.size).toBeGreaterThan(0);
-    expect(probe.streams[0]?.width).toBe(320);
-    expect(probe.streams[0]?.height).toBe(180);
-    expect(Number(probe.format.duration)).toBeCloseTo(1, 1);
-  });
-
-  test("renders multiple visual tracks, image overlays, and audio", async () => {
-    const composition = decodeComposition({
-      assets: [
-        {
-          durationFrames: 30,
-          fps: 30,
-          height: 180,
-          id: "source-video",
-          source: {
-            kind: "file",
-            path: "tmp/render-tests/source.mp4",
-          },
-          type: "video",
-          width: 320,
+          width: tiktokCanvas.width,
         },
         {
-          height: 90,
+          height: 360,
           id: "overlay-image",
           source: {
             kind: "file",
             path: "tmp/render-tests/overlay.png",
           },
           type: "image",
-          width: 160,
+          width: 360,
         },
         {
           durationFrames: 30,
@@ -169,10 +110,7 @@ describe("RendererLive integration", () => {
       id: "layered-render",
       schemaVersion: "0.1",
       settings: {
-        canvas: {
-          height: 180,
-          width: 320,
-        },
+        canvas: tiktokCanvas,
         fps: 30,
       },
       tracks: [
@@ -199,10 +137,10 @@ describe("RendererLive integration", () => {
               id: "image-overlay",
               layout: {
                 fit: "fill",
-                height: 90,
-                width: 160,
-                x: 80,
-                y: 45,
+                height: 360,
+                width: 360,
+                x: 360,
+                y: 620,
               },
               startFrame: 0,
               type: "image",
@@ -227,22 +165,80 @@ describe("RendererLive integration", () => {
           id: "audio-track",
           kind: "audio",
         },
+        {
+          clips: [
+            {
+              durationFrames: 30,
+              id: "title",
+              layout: {
+                fit: "fill",
+                height: 140,
+                width: 1080,
+                x: 0,
+                y: 96,
+              },
+              startFrame: 0,
+              style: {
+                color: "#ffffff",
+                fontSize: 86,
+                fontWeight: "bold",
+              },
+              text: "VBaaS",
+              type: "text",
+            },
+          ],
+          id: "text-track",
+          kind: "text",
+        },
+        {
+          cues: [
+            {
+              durationFrames: 15,
+              startFrame: 15,
+              text: "AI VIDEO INFRA",
+            },
+          ],
+          id: "caption-track",
+          kind: "caption",
+          layout: {
+            maxWidth: 920,
+            position: "bottom",
+          },
+          style: {
+            backgroundColor: "#ffe600",
+            color: "#000000",
+            fontSize: 96,
+            fontWeight: "bold",
+            lineHeight: 108,
+          },
+        },
       ],
     });
 
     const result = await Effect.runPromise(
       renderComposition({
         composition,
-        outputPath: layeredOutputPath,
+        outputPath: canonicalOutputPath,
         projectRoot: packageRoot,
-        quality: "draft",
+        quality: "high",
       }).pipe(Effect.provide(RendererLive))
     );
-    const outputStats = await stat(layeredOutputPath);
-    const probe = await probeVideo(layeredOutputPath);
-    const overlayPixel = await readRgbPixel(layeredOutputPath, 160, 90);
+    const outputStats = await stat(canonicalOutputPath);
+    const probe = await probeVideo(canonicalOutputPath);
+    const imageOverlayPixel = await readRgbPixel(canonicalOutputPath, 540, 800);
+    const hiddenCaptionPixel = await readRgbPixel(
+      canonicalOutputPath,
+      540,
+      1500
+    );
+    const captionOverlayPixel = await readRgbPixel(
+      canonicalOutputPath,
+      540,
+      1500,
+      0.7
+    );
 
-    expect(result.outputPath).toBe(layeredOutputPath);
+    expect(result.outputPath).toBe(canonicalOutputPath);
     expect(outputStats.size).toBeGreaterThan(0);
     expect(probe.streams.some((stream) => stream.codec_type === "audio")).toBe(
       true
@@ -251,14 +247,19 @@ describe("RendererLive integration", () => {
       probe.streams.some(
         (stream) =>
           stream.codec_type === "video" &&
-          stream.width === 320 &&
-          stream.height === 180
+          stream.width === tiktokCanvas.width &&
+          stream.height === tiktokCanvas.height
       )
     ).toBe(true);
     expect(Number(probe.format.duration)).toBeCloseTo(1, 1);
-    expect(overlayPixel.red).toBeGreaterThan(150);
-    expect(overlayPixel.blue).toBeLessThan(100);
-  });
+    expect(imageOverlayPixel.red).toBeGreaterThan(150);
+    expect(imageOverlayPixel.blue).toBeLessThan(100);
+    expect(hiddenCaptionPixel.red).toBeLessThan(80);
+    expect(hiddenCaptionPixel.green).toBeLessThan(90);
+    expect(captionOverlayPixel.red).toBeGreaterThan(150);
+    expect(captionOverlayPixel.green).toBeGreaterThan(150);
+    expect(captionOverlayPixel.blue).toBeLessThan(120);
+  }, 60_000);
 });
 
 const decodeComposition = (input: unknown): VbaasComposition =>
@@ -292,15 +293,19 @@ const probeVideo = async (path: string): Promise<ProbeResult> => {
 const readRgbPixel = async (
   path: string,
   x: number,
-  y: number
+  y: number,
+  seekSeconds = 0
 ): Promise<{
   readonly blue: number;
   readonly green: number;
   readonly red: number;
 }> => {
+  const seekArgs =
+    seekSeconds > 0 ? ["-ss", seekSeconds.toString()] : ([] as string[]);
   const result = await runProcess("ffmpeg", [
     "-v",
     "error",
+    ...seekArgs,
     "-i",
     path,
     "-vf",

@@ -4,6 +4,7 @@ import { validateComposition } from "../schema";
 import { CommandExecutorLive } from "./command";
 import { CompositionInvalid, type RenderError } from "./errors";
 import { FfmpegLive } from "./ffmpeg";
+import { HyperframesLive } from "./hyperframes";
 import { AssetResolverLive, TempDirectoryLive } from "./local";
 import { RenderPlannerLive } from "./plan";
 import {
@@ -60,8 +61,9 @@ export const renderComposition = (
           plan.htmlLayers.length === 0
             ? undefined
             : yield* hyperframes.renderOverlay({
-                outputPath: `${tempDir}/overlay.webm`,
+                outputPath: `${tempDir}/overlay.mov`,
                 plan,
+                quality: input.quality,
                 tempDir,
               });
 
@@ -83,7 +85,7 @@ export const renderComposition = (
 export const RendererLive = Layer.mergeAll(
   AssetResolverLive,
   FfmpegLive.pipe(Layer.provide(CommandExecutorLive)),
-  Hyperframes.Noop,
+  HyperframesLive,
   RenderPlannerLive,
   TempDirectoryLive
 );

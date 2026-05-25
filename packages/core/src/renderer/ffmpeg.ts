@@ -76,6 +76,7 @@ export const buildFfmpegArgs = (input: FfmpegRenderInput): string[] => {
     ...input.plan.inputs.flatMap((mediaInput) =>
       buildInputArgs(mediaInput, input.plan.canvas)
     ),
+    ...(input.overlayPath ? ["-i", input.overlayPath] : []),
     "-filter_complex",
     filterGraph,
     "-map",
@@ -112,10 +113,6 @@ const buildFfmpegArgsEffect = (
 };
 
 const getUnsupportedReason = (input: FfmpegRenderInput): string | undefined => {
-  if (input.overlayPath) {
-    return "FfmpegLive does not support Hyperframes overlays yet.";
-  }
-
   const missingVisualInput = input.plan.visualLayers.find(
     (visualLayer) =>
       getInputForLayer(input, visualLayer.inputIndex) === undefined
@@ -216,6 +213,18 @@ const buildFilterGraph = (input: FfmpegRenderInput): string => {
     );
 
     currentCanvasLabel = nextCanvasLabel;
+  }
+
+  if (input.overlayPath) {
+    const overlayInputIndex = input.plan.inputs.length;
+    const overlayLabel = "hyperframesOverlay";
+    const overlayCanvasLabel = "canvasOverlay";
+
+    parts.push(`[${overlayInputIndex}:v]format=rgba[${overlayLabel}]`);
+    parts.push(
+      `[${currentCanvasLabel}][${overlayLabel}]overlay=0:0:format=auto:eof_action=pass:shortest=0[${overlayCanvasLabel}]`
+    );
+    currentCanvasLabel = overlayCanvasLabel;
   }
 
   parts.push(`[${currentCanvasLabel}]format=yuv420p[vout]`);

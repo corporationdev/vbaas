@@ -2,6 +2,7 @@
 export * from "./command";
 export * from "./errors";
 export * from "./ffmpeg";
+export * from "./hyperframes";
 export * from "./local";
 export * from "./plan";
 export * from "./render";

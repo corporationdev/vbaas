@@ -92,6 +92,7 @@ export interface BuildRenderPlanInput extends RenderCompositionInput {
 export interface RenderOverlayInput {
   readonly outputPath: string;
   readonly plan: RenderPlan;
+  readonly quality?: RenderQuality;
   readonly tempDir: string;
 }
 

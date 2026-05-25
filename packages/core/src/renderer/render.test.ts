@@ -79,7 +79,7 @@ describe("renderComposition shell", () => {
     expect(calls.overlays).toHaveLength(1);
     expect(calls.overlays[0]?.plan.htmlLayers).toHaveLength(1);
     expect(calls.ffmpeg).toHaveLength(1);
-    expect(calls.ffmpeg[0]?.overlayPath).toBe("/tmp/vbaas-test/overlay.webm");
+    expect(calls.ffmpeg[0]?.overlayPath).toBe("/tmp/vbaas-test/overlay.mov");
   });
 
   test("renders Hyperframes overlays before ffmpeg for caption cues", async () => {
@@ -118,7 +118,7 @@ describe("renderComposition shell", () => {
         text: "Caption cue",
       })
     );
-    expect(calls.ffmpeg[0]?.overlayPath).toBe("/tmp/vbaas-test/overlay.webm");
+    expect(calls.ffmpeg[0]?.overlayPath).toBe("/tmp/vbaas-test/overlay.mov");
   });
 
   test("skips Hyperframes overlays for media-only compositions", async () => {
