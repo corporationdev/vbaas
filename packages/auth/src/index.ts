@@ -2,6 +2,13 @@ import { createDb } from "@vbaas/db";
 import {
   account,
   accountRelations,
+  apikey,
+  invitation,
+  invitationRelations,
+  member,
+  memberRelations,
+  organizationRelations,
+  organization as organizationTable,
   session,
   sessionRelations,
   user,
@@ -10,10 +17,18 @@ import {
 } from "@vbaas/db/schema/auth";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { authPlugins } from "./plugins";
 
 const schema = {
   account,
   accountRelations,
+  apikey,
+  invitation,
+  invitationRelations,
+  member,
+  memberRelations,
+  organization: organizationTable,
+  organizationRelations,
   session,
   sessionRelations,
   user,
@@ -41,6 +56,7 @@ export function createAuth(config: AuthConfig) {
     emailAndPassword: {
       enabled: true,
     },
+    plugins: authPlugins,
     // uncomment cookieCache setting when ready to deploy to Cloudflare using *.workers.dev domains
     // session: {
     //   cookieCache: {
