@@ -9,4 +9,4 @@ export const authPlugins = [
     references: "organization",
     requireName: true,
   }),
-] as const;
+];

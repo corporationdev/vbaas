@@ -34,19 +34,38 @@ import {
   allowedOrigins,
   getCorsResponseHeaders,
 } from "./cors";
+import {
+  type MediaContainerObjectNamespace,
+  makeMediaInternalLayer,
+} from "./media-internal";
 
 interface MakeServerFetchOptions {
   readonly getCorsOrigin: Effect<string, Error, WorkerEnvironment>;
+  readonly mediaContainerObjects?: MediaContainerObjectNamespace;
 }
 
-export const makeServerFetch = ({ getCorsOrigin }: MakeServerFetchOptions) =>
-  mergeLayers(
-    AuthLayer,
-    makeApiLayer(PublicVbaasApi).pipe(provideLayer(PublicAppApiLayer)),
-    makeApiLayer(ProtectedVbaasApi).pipe(
-      provideLayer(ProtectedAppApiLayer),
-      provideLayer(SessionAuthMiddleware.layer)
-    )
+export const makeServerFetch = ({
+  getCorsOrigin,
+  mediaContainerObjects,
+}: MakeServerFetchOptions) =>
+  (mediaContainerObjects
+    ? mergeLayers(
+        AuthLayer,
+        makeApiLayer(PublicVbaasApi).pipe(provideLayer(PublicAppApiLayer)),
+        makeApiLayer(ProtectedVbaasApi).pipe(
+          provideLayer(ProtectedAppApiLayer),
+          provideLayer(SessionAuthMiddleware.layer)
+        ),
+        makeMediaInternalLayer(mediaContainerObjects)
+      )
+    : mergeLayers(
+        AuthLayer,
+        makeApiLayer(PublicVbaasApi).pipe(provideLayer(PublicAppApiLayer)),
+        makeApiLayer(ProtectedVbaasApi).pipe(
+          provideLayer(ProtectedAppApiLayer),
+          provideLayer(SessionAuthMiddleware.layer)
+        )
+      )
   ).pipe(
     provideLayer(AuthService.Live),
     provideLayer([httpPlatformLayer, etagLayer]),
