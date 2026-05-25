@@ -12,6 +12,7 @@
       "typescript": "^6",
       "@types/node": "^22.13.14",
       "@cloudflare/workers-types": "^4.20251213.0",
+      "@better-auth/api-key": "1.6.11",
       "better-auth": "1.6.11",
       "alchemy": "2.0.0-beta.44",
       "effect": ">=4.0.0-beta.66",
@@ -35,15 +36,16 @@
     "db:studio": "turbo -F @vbaas/db db:studio",
     "db:generate": "turbo -F @vbaas/db db:generate",
     "db:migrate": "turbo -F @vbaas/db db:migrate",
+    "auth:generate": "bunx auth@latest generate --config packages/auth/auth.ts --adapter drizzle --dialect postgresql --output packages/db/src/schema/auth.ts --yes",
     "deploy": "turbo -F @vbaas/infra deploy",
     "destroy": "turbo -F @vbaas/infra destroy",
     "check": "ultracite check",
     "fix": "ultracite fix"
   },
   "dependencies": {
-    "@vbaas/env": "workspace:*",
     "@effect/platform-bun": ">=4.0.0-beta.66",
     "@effect/platform-node": ">=4.0.0-beta.66",
+    "@vbaas/env": "workspace:*",
     "dotenv": "catalog:",
     "effect": ">=4.0.0-beta.66",
     "zod": "catalog:"

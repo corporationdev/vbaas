@@ -11,6 +11,7 @@
     "dev:bare": "vite dev"
   },
   "dependencies": {
+    "@better-auth/api-key": "catalog:",
     "@effect/atom-react": "4.0.0-beta.70",
     "@hookform/resolvers": "^5.2.2",
     "@tailwindcss/vite": "^4.2.2",

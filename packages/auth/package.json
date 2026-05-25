@@ -11,6 +11,7 @@
   },
   "scripts": {},
   "dependencies": {
+    "@better-auth/api-key": "catalog:",
     "@vbaas/db": "workspace:*",
     "@vbaas/env": "workspace:*",
     "better-auth": "catalog:",
