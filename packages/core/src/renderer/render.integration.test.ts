@@ -13,10 +13,30 @@ import { RendererLive, renderComposition } from "./index";
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const renderTestDir = join(packageRoot, "tmp", "render-tests");
 const audioPath = join(renderTestDir, "tone.wav");
+const highAudioPath = join(renderTestDir, "tone-high.wav");
+const shortAudioPath = join(renderTestDir, "tone-short.wav");
+const trimSourceAudioPath = join(renderTestDir, "tone-trim-source.wav");
+const audioMixOutputPath = join(renderTestDir, "audio-mix-output.mp4");
+const audioNoTrackOutputPath = join(renderTestDir, "audio-no-track-output.mp4");
+const audioOffsetOutputPath = join(renderTestDir, "audio-offset-output.mp4");
+const audioLongOutputPath = join(renderTestDir, "audio-long-output.mp4");
+const audioShortOutputPath = join(renderTestDir, "audio-short-output.mp4");
+const audioSourceTrimOutputPath = join(
+  renderTestDir,
+  "audio-source-trim-output.mp4"
+);
 const canonicalOutputPath = join(renderTestDir, "canonical-output.mp4");
 const imagePath = join(renderTestDir, "overlay.png");
 const sourcePath = join(renderTestDir, "source.mp4");
 const textDecoder = new TextDecoder();
+const audioContractDurationFrames = 120;
+const audioContractDurationSeconds = 4;
+const longAudioDurationFrames = 180;
+const longAudioDurationSeconds = 6;
+const shortAudioDurationFrames = 30;
+const shortAudioDurationSeconds = 1;
+const silentRmsThreshold = 0.002;
+const audibleRmsThreshold = 0.01;
 const testDurationFrames = 300;
 const testDurationSeconds = 10;
 const tiktokCanvas = {
@@ -71,6 +91,45 @@ describe("RendererLive integration", () => {
       "-i",
       `sine=frequency=440:duration=${testDurationSeconds}`,
       audioPath,
+    ]);
+    await runProcess("ffmpeg", [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `sine=frequency=880:duration=${testDurationSeconds}`,
+      highAudioPath,
+    ]);
+    await runProcess("ffmpeg", [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      `sine=frequency=660:duration=${shortAudioDurationSeconds}`,
+      shortAudioPath,
+    ]);
+    await runProcess("ffmpeg", [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc=channel_layout=mono:sample_rate=44100:d=1",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=550:duration=3",
+      "-filter_complex",
+      "[0:a][1:a]concat=n=2:v=0:a=1",
+      trimSourceAudioPath,
     ]);
   });
 
@@ -262,10 +321,296 @@ describe("RendererLive integration", () => {
     expect(captionOverlayPixel.green).toBeGreaterThan(150);
     expect(captionOverlayPixel.blue).toBeLessThan(120);
   }, 120_000);
+
+  test("mixes multiple audio tracks with independent start offsets", async () => {
+    await renderAudioContractComposition({
+      audioClips: [
+        {
+          assetId: "tone-audio",
+          durationFrames: audioContractDurationFrames,
+          id: "base-tone",
+          startFrame: 0,
+          volume: 0.35,
+        },
+        {
+          assetId: "high-tone-audio",
+          durationFrames: 60,
+          id: "delayed-high-tone",
+          startFrame: 60,
+          volume: 0.35,
+        },
+      ],
+      audioTracks: 2,
+      id: "audio-mix-contract",
+      outputPath: audioMixOutputPath,
+    });
+
+    const singleToneRms = await readAudioRms(audioMixOutputPath, 1);
+    const mixedToneRms = await readAudioRms(audioMixOutputPath, 2.5);
+
+    expect(singleToneRms).toBeGreaterThan(audibleRmsThreshold);
+    expect(mixedToneRms).toBeGreaterThan(singleToneRms * 1.15);
+  }, 120_000);
+
+  test("honors audio start offsets and clip trimming", async () => {
+    await renderAudioContractComposition({
+      audioClips: [
+        {
+          assetId: "tone-audio",
+          durationFrames: 30,
+          id: "trimmed-offset-tone",
+          startFrame: 30,
+          volume: 0.8,
+        },
+      ],
+      id: "audio-offset-trim-contract",
+      outputPath: audioOffsetOutputPath,
+    });
+
+    const beforeClipRms = await readAudioRms(audioOffsetOutputPath, 0.5);
+    const duringClipRms = await readAudioRms(audioOffsetOutputPath, 1.25);
+    const afterClipRms = await readAudioRms(audioOffsetOutputPath, 2.25);
+
+    expect(beforeClipRms).toBeLessThan(silentRmsThreshold);
+    expect(duringClipRms).toBeGreaterThan(audibleRmsThreshold);
+    expect(afterClipRms).toBeLessThan(silentRmsThreshold);
+  }, 120_000);
+
+  test("honors source trimming inside audio assets", async () => {
+    await renderAudioContractComposition({
+      audioClips: [
+        {
+          assetId: "trim-source-audio",
+          durationFrames: 30,
+          id: "source-trimmed-tone",
+          sourceStartFrame: 30,
+          startFrame: 0,
+          volume: 0.8,
+        },
+      ],
+      id: "audio-source-trim-contract",
+      outputPath: audioSourceTrimOutputPath,
+    });
+
+    const sourceTrimmedRms = await readAudioRms(
+      audioSourceTrimOutputPath,
+      0.25
+    );
+
+    expect(sourceTrimmedRms).toBeGreaterThan(audibleRmsThreshold);
+  }, 120_000);
+
+  test("omits the audio stream when the composition has no audio tracks", async () => {
+    await renderAudioContractComposition({
+      audioClips: [],
+      id: "no-audio-contract",
+      outputPath: audioNoTrackOutputPath,
+    });
+
+    const probe = await probeVideo(audioNoTrackOutputPath);
+
+    expect(probe.streams.some((stream) => stream.codec_type === "audio")).toBe(
+      false
+    );
+    expect(Number(probe.format.duration)).toBeCloseTo(
+      audioContractDurationSeconds,
+      1
+    );
+  }, 120_000);
+
+  test("pads shorter audio with silence to the video duration", async () => {
+    await renderAudioContractComposition({
+      audioClips: [
+        {
+          assetId: "short-tone-audio",
+          durationFrames: shortAudioDurationFrames,
+          id: "short-tone",
+          startFrame: 0,
+          volume: 0.8,
+        },
+      ],
+      id: "short-audio-contract",
+      outputPath: audioShortOutputPath,
+    });
+
+    const probe = await probeVideo(audioShortOutputPath);
+    const duringAudioRms = await readAudioRms(audioShortOutputPath, 0.5);
+    const afterAudioRms = await readAudioRms(audioShortOutputPath, 2.5);
+
+    expect(Number(probe.format.duration)).toBeCloseTo(
+      audioContractDurationSeconds,
+      1
+    );
+    expect(duringAudioRms).toBeGreaterThan(audibleRmsThreshold);
+    expect(afterAudioRms).toBeLessThan(silentRmsThreshold);
+  }, 120_000);
+
+  test("lets longer audio define the render duration when no explicit duration is set", async () => {
+    await renderAudioContractComposition({
+      audioClips: [
+        {
+          assetId: "tone-audio",
+          durationFrames: longAudioDurationFrames,
+          id: "long-tone",
+          startFrame: 0,
+          volume: 0.8,
+        },
+      ],
+      durationFrames: null,
+      id: "long-audio-contract",
+      outputPath: audioLongOutputPath,
+    });
+
+    const probe = await probeVideo(audioLongOutputPath);
+    const lateAudioRms = await readAudioRms(audioLongOutputPath, 5);
+
+    expect(Number(probe.format.duration)).toBeCloseTo(
+      longAudioDurationSeconds,
+      1
+    );
+    expect(lateAudioRms).toBeGreaterThan(audibleRmsThreshold);
+  }, 120_000);
 });
 
 const decodeComposition = (input: unknown): VbaasComposition =>
   decodeUnknownSync(vbaasCompositionSchema)(input);
+
+interface AudioContractClip {
+  readonly assetId: string;
+  readonly durationFrames: number;
+  readonly id: string;
+  readonly sourceStartFrame?: number;
+  readonly startFrame: number;
+  readonly volume: number;
+}
+
+const renderAudioContractComposition = async ({
+  audioClips,
+  audioTracks = 1,
+  durationFrames,
+  id,
+  outputPath,
+}: {
+  readonly audioClips: readonly AudioContractClip[];
+  readonly audioTracks?: number;
+  readonly durationFrames?: number | null;
+  readonly id: string;
+  readonly outputPath: string;
+}): Promise<void> => {
+  const tracks: VbaasComposition["tracks"] = [
+    {
+      clips: [
+        {
+          durationFrames: audioContractDurationFrames,
+          id: "background-video",
+          media: {
+            assetId: "source-video",
+          },
+          startFrame: 0,
+          type: "video",
+        },
+      ],
+      id: "background-track",
+      kind: "visual",
+    },
+  ];
+
+  for (let index = 0; index < audioTracks; index += 1) {
+    const clips = audioClips.filter((_, clipIndex) => clipIndex === index);
+
+    if (clips.length === 0) {
+      continue;
+    }
+
+    tracks.push({
+      clips: clips.map((clip) => ({
+        durationFrames: clip.durationFrames,
+        id: clip.id,
+        media: {
+          assetId: clip.assetId,
+          sourceStartFrame: clip.sourceStartFrame ?? 0,
+        },
+        startFrame: clip.startFrame,
+        type: "audio",
+        volume: clip.volume,
+      })),
+      id: `audio-track-${index}`,
+      kind: "audio",
+    });
+  }
+
+  const composition = decodeComposition({
+    assets: [
+      {
+        durationFrames: testDurationFrames,
+        fps: 30,
+        height: tiktokCanvas.height,
+        id: "source-video",
+        source: {
+          kind: "file",
+          path: "tmp/render-tests/source.mp4",
+        },
+        type: "video",
+        width: tiktokCanvas.width,
+      },
+      {
+        durationFrames: testDurationFrames,
+        id: "tone-audio",
+        source: {
+          kind: "file",
+          path: "tmp/render-tests/tone.wav",
+        },
+        type: "audio",
+      },
+      {
+        durationFrames: testDurationFrames,
+        id: "high-tone-audio",
+        source: {
+          kind: "file",
+          path: "tmp/render-tests/tone-high.wav",
+        },
+        type: "audio",
+      },
+      {
+        durationFrames: audioContractDurationFrames,
+        id: "trim-source-audio",
+        source: {
+          kind: "file",
+          path: "tmp/render-tests/tone-trim-source.wav",
+        },
+        type: "audio",
+      },
+      {
+        durationFrames: shortAudioDurationFrames,
+        id: "short-tone-audio",
+        source: {
+          kind: "file",
+          path: "tmp/render-tests/tone-short.wav",
+        },
+        type: "audio",
+      },
+    ],
+    ...(durationFrames === null
+      ? {}
+      : { durationFrames: durationFrames ?? audioContractDurationFrames }),
+    id,
+    schemaVersion: "0.1",
+    settings: {
+      canvas: tiktokCanvas,
+      fps: 30,
+    },
+    tracks,
+  });
+
+  await Effect.runPromise(
+    renderComposition({
+      composition,
+      outputPath,
+      projectRoot: packageRoot,
+      quality: "high",
+    }).pipe(Effect.provide(RendererLive))
+  );
+};
 
 interface ProbeResult {
   readonly format: {
@@ -325,6 +670,51 @@ const readRgbPixel = async (
     green: bytes[1] ?? 0,
     red: bytes[0] ?? 0,
   };
+};
+
+const readAudioRms = async (
+  path: string,
+  seekSeconds: number,
+  durationSeconds = 0.25
+): Promise<number> => {
+  const result = await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-ss",
+    seekSeconds.toString(),
+    "-t",
+    durationSeconds.toString(),
+    "-i",
+    path,
+    "-vn",
+    "-ac",
+    "1",
+    "-ar",
+    "48000",
+    "-f",
+    "f32le",
+    "-",
+  ]);
+  const view = new DataView(result.stdout);
+  const sampleCount = Math.floor(
+    view.byteLength / Float32Array.BYTES_PER_ELEMENT
+  );
+
+  if (sampleCount === 0) {
+    return 0;
+  }
+
+  let sumSquares = 0;
+
+  for (let index = 0; index < sampleCount; index += 1) {
+    const sample = view.getFloat32(
+      index * Float32Array.BYTES_PER_ELEMENT,
+      true
+    );
+    sumSquares += sample * sample;
+  }
+
+  return Math.sqrt(sumSquares / sampleCount);
 };
 
 const runProcess = async (
