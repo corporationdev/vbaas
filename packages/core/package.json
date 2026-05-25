@@ -1,0 +1,35 @@
+{
+  "name": "@vbaas/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/schema.ts"
+    },
+    "./preview": {
+      "default": "./src/preview/index.ts"
+    },
+    "./renderer": {
+      "default": "./src/renderer/index.ts"
+    },
+    "./schema": {
+      "default": "./src/schema.ts"
+    }
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "effect": "catalog:",
+    "mediabunny": "^1.41.0",
+    "puppeteer-core": "^24.43.1"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@vbaas/config": "workspace:*",
+    "@webgpu/types": "^0.1.70",
+    "typescript": "catalog:"
+  }
+}

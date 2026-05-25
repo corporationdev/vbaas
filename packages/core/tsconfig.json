@@ -6,7 +6,11 @@
     "sourceMap": true,
     "outDir": "dist",
     "composite": true,
-    "strictNullChecks": true
+    "strictNullChecks": true,
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "noUnusedParameters": false,
+    "types": ["node", "@cloudflare/workers-types", "bun", "@webgpu/types"]
   },
+  "exclude": ["src/**/*.test.ts"],
   "include": ["src"]
 }

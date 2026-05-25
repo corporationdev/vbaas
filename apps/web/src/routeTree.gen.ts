@@ -13,6 +13,7 @@ import { Route as AuthRouteImport } from './routes/_auth'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as AppIndexRouteImport } from './routes/_app.index'
 import { Route as AuthLoginRouteImport } from './routes/_auth.login'
+import { Route as AppStudioRouteImport } from './routes/_app.studio'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
 import { Route as AppApiKeysRouteImport } from './routes/_app.api-keys'
 
@@ -34,6 +35,11 @@ const AuthLoginRoute = AuthLoginRouteImport.update({
   path: '/login',
   getParentRoute: () => AuthRoute,
 } as any)
+const AppStudioRoute = AppStudioRouteImport.update({
+  id: '/studio',
+  path: '/studio',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppDashboardRoute = AppDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -49,12 +55,14 @@ export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/api-keys': typeof AppApiKeysRoute
   '/dashboard': typeof AppDashboardRoute
+  '/studio': typeof AppStudioRoute
   '/login': typeof AuthLoginRoute
 }
 export interface FileRoutesByTo {
   '/': typeof AppIndexRoute
   '/api-keys': typeof AppApiKeysRoute
   '/dashboard': typeof AppDashboardRoute
+  '/studio': typeof AppStudioRoute
   '/login': typeof AuthLoginRoute
 }
 export interface FileRoutesById {
@@ -63,20 +71,22 @@ export interface FileRoutesById {
   '/_auth': typeof AuthRouteWithChildren
   '/_app/api-keys': typeof AppApiKeysRoute
   '/_app/dashboard': typeof AppDashboardRoute
+  '/_app/studio': typeof AppStudioRoute
   '/_auth/login': typeof AuthLoginRoute
   '/_app/': typeof AppIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/api-keys' | '/dashboard' | '/login'
+  fullPaths: '/' | '/api-keys' | '/dashboard' | '/studio' | '/login'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/api-keys' | '/dashboard' | '/login'
+  to: '/' | '/api-keys' | '/dashboard' | '/studio' | '/login'
   id:
     | '__root__'
     | '/_app'
     | '/_auth'
     | '/_app/api-keys'
     | '/_app/dashboard'
+    | '/_app/studio'
     | '/_auth/login'
     | '/_app/'
   fileRoutesById: FileRoutesById
@@ -116,6 +126,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthLoginRouteImport
       parentRoute: typeof AuthRoute
     }
+    '/_app/studio': {
+      id: '/_app/studio'
+      path: '/studio'
+      fullPath: '/studio'
+      preLoaderRoute: typeof AppStudioRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/dashboard': {
       id: '/_app/dashboard'
       path: '/dashboard'
@@ -136,12 +153,14 @@ declare module '@tanstack/react-router' {
 interface AppRouteChildren {
   AppApiKeysRoute: typeof AppApiKeysRoute
   AppDashboardRoute: typeof AppDashboardRoute
+  AppStudioRoute: typeof AppStudioRoute
   AppIndexRoute: typeof AppIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppApiKeysRoute: AppApiKeysRoute,
   AppDashboardRoute: AppDashboardRoute,
+  AppStudioRoute: AppStudioRoute,
   AppIndexRoute: AppIndexRoute,
 }
 
