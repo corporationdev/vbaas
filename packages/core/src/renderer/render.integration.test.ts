@@ -12,8 +12,12 @@ import { RendererLive, renderComposition } from "./index";
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const renderTestDir = join(packageRoot, "tmp", "render-tests");
+const audioPath = join(renderTestDir, "tone.wav");
+const imagePath = join(renderTestDir, "overlay.png");
+const layeredOutputPath = join(renderTestDir, "layered-output.mp4");
 const sourcePath = join(renderTestDir, "source.mp4");
 const outputPath = join(renderTestDir, "media-only-output.mp4");
+const textDecoder = new TextDecoder();
 
 describe("RendererLive integration", () => {
   beforeAll(async () => {
@@ -32,12 +36,36 @@ describe("RendererLive integration", () => {
       "-f",
       "lavfi",
       "-i",
-      "testsrc2=size=320x180:rate=30:duration=1",
+      "color=c=blue:s=320x180:r=30:d=1",
       "-c:v",
       "libx264",
       "-pix_fmt",
       "yuv420p",
       sourcePath,
+    ]);
+    await runProcess("ffmpeg", [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:s=160x90",
+      "-frames:v",
+      "1",
+      imagePath,
+    ]);
+    await runProcess("ffmpeg", [
+      "-y",
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-f",
+      "lavfi",
+      "-i",
+      "sine=frequency=440:duration=1",
+      audioPath,
     ]);
   });
 
@@ -102,6 +130,135 @@ describe("RendererLive integration", () => {
     expect(probe.streams[0]?.height).toBe(180);
     expect(Number(probe.format.duration)).toBeCloseTo(1, 1);
   });
+
+  test("renders multiple visual tracks, image overlays, and audio", async () => {
+    const composition = decodeComposition({
+      assets: [
+        {
+          durationFrames: 30,
+          fps: 30,
+          height: 180,
+          id: "source-video",
+          source: {
+            kind: "file",
+            path: "tmp/render-tests/source.mp4",
+          },
+          type: "video",
+          width: 320,
+        },
+        {
+          height: 90,
+          id: "overlay-image",
+          source: {
+            kind: "file",
+            path: "tmp/render-tests/overlay.png",
+          },
+          type: "image",
+          width: 160,
+        },
+        {
+          durationFrames: 30,
+          id: "tone-audio",
+          source: {
+            kind: "file",
+            path: "tmp/render-tests/tone.wav",
+          },
+          type: "audio",
+        },
+      ],
+      id: "layered-render",
+      schemaVersion: "0.1",
+      settings: {
+        canvas: {
+          height: 180,
+          width: 320,
+        },
+        fps: 30,
+      },
+      tracks: [
+        {
+          clips: [
+            {
+              durationFrames: 30,
+              id: "background-video",
+              media: {
+                assetId: "source-video",
+              },
+              startFrame: 0,
+              type: "video",
+            },
+          ],
+          id: "background-track",
+          kind: "visual",
+        },
+        {
+          clips: [
+            {
+              assetId: "overlay-image",
+              durationFrames: 30,
+              id: "image-overlay",
+              layout: {
+                fit: "fill",
+                height: 90,
+                width: 160,
+                x: 80,
+                y: 45,
+              },
+              startFrame: 0,
+              type: "image",
+            },
+          ],
+          id: "overlay-track",
+          kind: "visual",
+        },
+        {
+          clips: [
+            {
+              durationFrames: 30,
+              id: "tone",
+              media: {
+                assetId: "tone-audio",
+              },
+              startFrame: 0,
+              type: "audio",
+              volume: 0.5,
+            },
+          ],
+          id: "audio-track",
+          kind: "audio",
+        },
+      ],
+    });
+
+    const result = await Effect.runPromise(
+      renderComposition({
+        composition,
+        outputPath: layeredOutputPath,
+        projectRoot: packageRoot,
+        quality: "draft",
+      }).pipe(Effect.provide(RendererLive))
+    );
+    const outputStats = await stat(layeredOutputPath);
+    const probe = await probeVideo(layeredOutputPath);
+    const overlayPixel = await readRgbPixel(layeredOutputPath, 160, 90);
+
+    expect(result.outputPath).toBe(layeredOutputPath);
+    expect(outputStats.size).toBeGreaterThan(0);
+    expect(probe.streams.some((stream) => stream.codec_type === "audio")).toBe(
+      true
+    );
+    expect(
+      probe.streams.some(
+        (stream) =>
+          stream.codec_type === "video" &&
+          stream.width === 320 &&
+          stream.height === 180
+      )
+    ).toBe(true);
+    expect(Number(probe.format.duration)).toBeCloseTo(1, 1);
+    expect(overlayPixel.red).toBeGreaterThan(150);
+    expect(overlayPixel.blue).toBeLessThan(100);
+  });
 });
 
 const decodeComposition = (input: unknown): VbaasComposition =>
@@ -112,8 +269,9 @@ interface ProbeResult {
     readonly duration: string;
   };
   readonly streams: ReadonlyArray<{
-    readonly height: number;
-    readonly width: number;
+    readonly codec_type: "audio" | "video";
+    readonly height?: number;
+    readonly width?: number;
   }>;
 }
 
@@ -121,28 +279,57 @@ const probeVideo = async (path: string): Promise<ProbeResult> => {
   const result = await runProcess("ffprobe", [
     "-v",
     "error",
-    "-select_streams",
-    "v:0",
     "-show_entries",
-    "stream=width,height:format=duration",
+    "stream=codec_type,width,height:format=duration",
     "-of",
     "json",
     path,
   ]);
 
-  return JSON.parse(result.stdout) as ProbeResult;
+  return JSON.parse(textDecoder.decode(result.stdout)) as ProbeResult;
+};
+
+const readRgbPixel = async (
+  path: string,
+  x: number,
+  y: number
+): Promise<{
+  readonly blue: number;
+  readonly green: number;
+  readonly red: number;
+}> => {
+  const result = await runProcess("ffmpeg", [
+    "-v",
+    "error",
+    "-i",
+    path,
+    "-vf",
+    `format=rgb24,crop=1:1:${x}:${y}`,
+    "-frames:v",
+    "1",
+    "-f",
+    "rawvideo",
+    "-",
+  ]);
+  const bytes = new Uint8Array(result.stdout);
+
+  return {
+    blue: bytes[2] ?? 0,
+    green: bytes[1] ?? 0,
+    red: bytes[0] ?? 0,
+  };
 };
 
 const runProcess = async (
   binary: string,
   args: readonly string[]
-): Promise<{ readonly stderr: string; readonly stdout: string }> => {
+): Promise<{ readonly stderr: string; readonly stdout: ArrayBuffer }> => {
   const process = spawn([binary, ...args], {
     stderr: "pipe",
     stdout: "pipe",
   });
   const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(process.stdout).text(),
+    new Response(process.stdout).arrayBuffer(),
     new Response(process.stderr).text(),
     process.exited,
   ]);

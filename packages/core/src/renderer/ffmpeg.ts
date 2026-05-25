@@ -3,11 +3,20 @@ import { dirname } from "node:path";
 
 import { Effect, Layer } from "effect";
 
+import type { Layout } from "../schema";
 import { FfmpegFailed } from "./errors";
 import { CommandExecutor, Ffmpeg } from "./services";
-import type { FfmpegRenderInput, RenderMediaInput, VisualLayer } from "./types";
+import type {
+  AudioLayer,
+  FfmpegRenderInput,
+  RenderCanvas,
+  RenderMediaInput,
+  VisualLayer,
+} from "./types";
 
 const ffmpegBinary = "ffmpeg";
+const defaultAudioBitrate = "192k";
+const defaultAudioCodec = "aac";
 const defaultVideoCodec = "libx264";
 const defaultPreset = "veryfast";
 
@@ -57,29 +66,21 @@ export const FfmpegLive = Layer.effect(
 );
 
 export const buildFfmpegArgs = (input: FfmpegRenderInput): string[] => {
-  const visualLayer = input.plan.visualLayers[0];
-  const mediaInput =
-    visualLayer === undefined
-      ? undefined
-      : input.plan.inputs.find(
-          (candidate) => candidate.inputIndex === visualLayer.inputIndex
-        );
-
-  if (visualLayer === undefined || mediaInput === undefined) {
-    return [];
-  }
+  const filterGraph = buildFilterGraph(input);
 
   return [
     "-y",
     "-hide_banner",
     "-loglevel",
     "error",
-    ...buildInputArgs(visualLayer, mediaInput, input),
+    ...input.plan.inputs.flatMap((mediaInput) =>
+      buildInputArgs(mediaInput, input.plan.canvas)
+    ),
     "-filter_complex",
-    `[0:v]${buildVideoFilter(input)}[v]`,
+    filterGraph,
     "-map",
-    "[v]",
-    "-an",
+    "[vout]",
+    ...buildAudioOutputArgs(input),
     "-c:v",
     defaultVideoCodec,
     "-preset",
@@ -115,29 +116,28 @@ const getUnsupportedReason = (input: FfmpegRenderInput): string | undefined => {
     return "FfmpegLive does not support Hyperframes overlays yet.";
   }
 
-  if (input.plan.audioLayers.length > 0) {
-    return "FfmpegLive does not support audio layers yet.";
-  }
-
-  if (input.plan.visualLayers.length !== 1) {
-    return "FfmpegLive currently supports exactly one visual layer.";
-  }
-
-  const visualLayer = input.plan.visualLayers[0];
-
-  if (!visualLayer) {
-    return "FfmpegLive requires a visual layer.";
-  }
-
-  const mediaInput = input.plan.inputs.find(
-    (candidate) => candidate.inputIndex === visualLayer.inputIndex
+  const missingVisualInput = input.plan.visualLayers.find(
+    (visualLayer) =>
+      getInputForLayer(input, visualLayer.inputIndex) === undefined
   );
 
-  if (!mediaInput) {
-    return `Missing ffmpeg input for visual layer "${visualLayer.clipId}".`;
+  if (missingVisualInput) {
+    return `Missing ffmpeg input for visual layer "${missingVisualInput.clipId}".`;
   }
 
-  if (mediaInput.playbackRate !== 1) {
+  const missingAudioInput = input.plan.audioLayers.find(
+    (audioLayer) => getInputForLayer(input, audioLayer.inputIndex) === undefined
+  );
+
+  if (missingAudioInput) {
+    return `Missing ffmpeg input for audio layer "${missingAudioInput.clipId}".`;
+  }
+
+  const playbackRateInput = input.plan.inputs.find(
+    (mediaInput) => mediaInput.playbackRate !== 1
+  );
+
+  if (playbackRateInput) {
     return "FfmpegLive does not support playbackRate yet.";
   }
 
@@ -145,23 +145,20 @@ const getUnsupportedReason = (input: FfmpegRenderInput): string | undefined => {
 };
 
 const buildInputArgs = (
-  visualLayer: VisualLayer,
   mediaInput: RenderMediaInput,
-  input: FfmpegRenderInput
+  canvas: RenderCanvas
 ): string[] => {
   const sourceStartSeconds = framesToSeconds(
     mediaInput.sourceStartFrame,
-    input.plan.canvas.fps
+    canvas.fps
   );
 
-  if (visualLayer.type === "image") {
+  if (mediaInput.asset.type === "image") {
     return [
       "-loop",
       "1",
       "-t",
-      formatSeconds(
-        framesToSeconds(visualLayer.durationFrames, input.plan.canvas.fps)
-      ),
+      formatSeconds(framesToSeconds(mediaInput.durationFrames, canvas.fps)),
       "-i",
       mediaInput.asset.resolvedSource,
     ];
@@ -176,25 +173,246 @@ const buildInputArgs = (
   ];
 };
 
-const buildVideoFilter = (input: FfmpegRenderInput): string => {
+const buildFilterGraph = (input: FfmpegRenderInput): string => {
+  const parts: string[] = [];
   const { fps, height, width } = input.plan.canvas;
-  const durationSeconds = framesToSeconds(input.plan.durationFrames, fps);
+  const durationSeconds = getDurationSeconds(input);
+  let currentCanvasLabel = "canvas0";
+
+  parts.push(
+    `color=c=black@1:s=${width}x${height}:r=${fps}:d=${formatSeconds(
+      durationSeconds
+    )},format=rgba[${currentCanvasLabel}]`
+  );
+
+  for (const [layerIndex, visualLayer] of input.plan.visualLayers.entries()) {
+    const mediaInput = getInputForLayer(input, visualLayer.inputIndex);
+
+    if (!mediaInput) {
+      continue;
+    }
+
+    const layerLabel = `visual${layerIndex}`;
+    const nextCanvasLabel = `canvas${layerIndex + 1}`;
+    const overlay = getOverlayLayout(visualLayer.layout, input.plan.canvas);
+
+    parts.push(
+      `[${mediaInput.inputIndex}:v]${buildVisualLayerFilter(
+        visualLayer,
+        input.plan.canvas
+      )}[${layerLabel}]`
+    );
+    parts.push(
+      `[${currentCanvasLabel}][${layerLabel}]overlay=${formatNumber(
+        overlay.x
+      )}:${formatNumber(overlay.y)}:eof_action=pass:shortest=0:enable='between(t\\,${formatSeconds(
+        framesToSeconds(visualLayer.startFrame, input.plan.canvas.fps)
+      )}\\,${formatSeconds(
+        framesToSeconds(
+          visualLayer.startFrame + visualLayer.durationFrames,
+          input.plan.canvas.fps
+        )
+      )})'[${nextCanvasLabel}]`
+    );
+
+    currentCanvasLabel = nextCanvasLabel;
+  }
+
+  parts.push(`[${currentCanvasLabel}]format=yuv420p[vout]`);
+
+  if (input.plan.audioLayers.length > 0) {
+    parts.push(...buildAudioFilters(input));
+  }
+
+  return parts.join(";");
+};
+
+const buildVisualLayerFilter = (
+  visualLayer: VisualLayer,
+  canvas: RenderCanvas
+): string => {
+  const durationSeconds = framesToSeconds(
+    visualLayer.durationFrames,
+    canvas.fps
+  );
+  const startSeconds = framesToSeconds(visualLayer.startFrame, canvas.fps);
+  const layout = getOverlayLayout(visualLayer.layout, canvas);
+  const filters = [
+    `trim=duration=${formatSeconds(durationSeconds)}`,
+    `setpts=PTS-STARTPTS+${formatSeconds(startSeconds)}/TB`,
+    "format=rgba",
+    ...buildLayoutFilters(visualLayer.layout, layout),
+  ];
+
+  if (layout.opacity < 1) {
+    filters.push(`colorchannelmixer=aa=${formatNumber(layout.opacity)}`);
+  }
+
+  return filters.join(",");
+};
+
+const buildLayoutFilters = (
+  sourceLayout: Layout | undefined,
+  layout: RequiredOverlayLayout
+): string[] => {
+  const filters: string[] = [];
+
+  if (sourceLayout?.crop) {
+    filters.push(
+      `crop=${formatNumber(sourceLayout.crop.width)}:${formatNumber(
+        sourceLayout.crop.height
+      )}:${formatNumber(sourceLayout.crop.x)}:${formatNumber(
+        sourceLayout.crop.y
+      )}`
+    );
+  }
+
+  if (sourceLayout?.rotation) {
+    filters.push(
+      `rotate=${formatNumber(sourceLayout.rotation)}*PI/180:c=black@0`
+    );
+  }
+
+  if (layout.fit === "fill") {
+    filters.push(
+      `scale=${formatNumber(layout.width)}:${formatNumber(layout.height)}`
+    );
+  } else if (layout.fit === "contain") {
+    filters.push(
+      `scale=${formatNumber(layout.width)}:${formatNumber(
+        layout.height
+      )}:force_original_aspect_ratio=decrease`,
+      `pad=${formatNumber(layout.width)}:${formatNumber(
+        layout.height
+      )}:(ow-iw)/2:(oh-ih)/2:color=black@0`
+    );
+  } else if (layout.fit === "cover") {
+    filters.push(
+      `scale=${formatNumber(layout.width)}:${formatNumber(
+        layout.height
+      )}:force_original_aspect_ratio=increase`,
+      `crop=${formatNumber(layout.width)}:${formatNumber(layout.height)}`
+    );
+  }
+
+  return filters;
+};
+
+const buildAudioFilters = (input: FfmpegRenderInput): string[] => {
+  const parts: string[] = [];
+  const audioLabels = input.plan.audioLayers.map(
+    (audioLayer, audioLayerIndex) => {
+      const mediaInput = getInputForLayer(input, audioLayer.inputIndex);
+      const label = `audio${audioLayerIndex}`;
+
+      if (!mediaInput) {
+        return label;
+      }
+
+      parts.push(
+        `[${mediaInput.inputIndex}:a]${buildAudioLayerFilter(
+          audioLayer,
+          input.plan.canvas
+        )}[${label}]`
+      );
+
+      return label;
+    }
+  );
+  const durationSeconds = getDurationSeconds(input);
+
+  if (audioLabels.length === 1) {
+    parts.push(
+      `[${audioLabels[0]}]apad,atrim=duration=${formatSeconds(
+        durationSeconds
+      )}[aout]`
+    );
+    return parts;
+  }
+
+  parts.push(
+    `${audioLabels.map((label) => `[${label}]`).join("")}amix=inputs=${
+      audioLabels.length
+    }:duration=longest:normalize=0,apad,atrim=duration=${formatSeconds(
+      durationSeconds
+    )}[aout]`
+  );
+
+  return parts;
+};
+
+const buildAudioLayerFilter = (
+  audioLayer: AudioLayer,
+  canvas: RenderCanvas
+): string => {
+  const durationSeconds = framesToSeconds(
+    audioLayer.durationFrames,
+    canvas.fps
+  );
+  const delayMilliseconds = Math.round(
+    framesToSeconds(audioLayer.startFrame, canvas.fps) * 1000
+  );
 
   return [
-    `scale=${width}:${height}:force_original_aspect_ratio=decrease`,
-    `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
-    "setsar=1",
-    `fps=${fps}`,
-    `trim=duration=${formatSeconds(durationSeconds)}`,
-    "setpts=PTS-STARTPTS",
-    "format=yuv420p",
+    `atrim=duration=${formatSeconds(durationSeconds)}`,
+    "asetpts=PTS-STARTPTS",
+    `volume=${formatNumber(audioLayer.volume)}`,
+    `adelay=${delayMilliseconds}:all=1`,
   ].join(",");
 };
+
+const buildAudioOutputArgs = (input: FfmpegRenderInput): string[] => {
+  if (input.plan.audioLayers.length === 0) {
+    return ["-an"];
+  }
+
+  return [
+    "-map",
+    "[aout]",
+    "-c:a",
+    defaultAudioCodec,
+    "-b:a",
+    defaultAudioBitrate,
+  ];
+};
+
+interface RequiredOverlayLayout {
+  readonly fit: "contain" | "cover" | "fill" | "none";
+  readonly height: number;
+  readonly opacity: number;
+  readonly width: number;
+  readonly x: number;
+  readonly y: number;
+}
+
+const getOverlayLayout = (
+  layout: Layout | undefined,
+  canvas: RenderCanvas
+): RequiredOverlayLayout => ({
+  fit: layout?.fit ?? "cover",
+  height: layout?.height ?? canvas.height,
+  opacity: layout?.opacity ?? 1,
+  width: layout?.width ?? canvas.width,
+  x: layout?.x ?? 0,
+  y: layout?.y ?? 0,
+});
+
+const getInputForLayer = (
+  input: FfmpegRenderInput,
+  inputIndex: number
+): RenderMediaInput | undefined =>
+  input.plan.inputs.find((candidate) => candidate.inputIndex === inputIndex);
+
+const getDurationSeconds = (input: FfmpegRenderInput): number =>
+  framesToSeconds(input.plan.durationFrames, input.plan.canvas.fps);
 
 const framesToSeconds = (frames: number, fps: number): number => frames / fps;
 
 const formatSeconds = (seconds: number): string =>
   Number.isInteger(seconds) ? seconds.toString() : seconds.toFixed(6);
+
+const formatNumber = (value: number): string =>
+  Number.isInteger(value) ? value.toString() : value.toFixed(6);
 
 const getCrf = (input: FfmpegRenderInput): string => {
   if (input.quality === "high") {
