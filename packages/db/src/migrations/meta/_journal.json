@@ -8,6 +8,13 @@
       "when": 1779589451660,
       "tag": "0000_exotic_skaar",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1779671605148,
+      "tag": "0001_chemical_epoch",
+      "breakpoints": true
     }
   ]
 }

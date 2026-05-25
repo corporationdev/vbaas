@@ -13,7 +13,7 @@ import {
   SidebarRail,
   SidebarSeparator,
 } from "@vbaas/ui/components/sidebar";
-import { Home, LayoutDashboard } from "lucide-react";
+import { Home, KeyRound, LayoutDashboard } from "lucide-react";
 
 import { SidebarAccountMenu } from "@/components/sidebar-account-menu";
 
@@ -27,6 +27,11 @@ const navigationItems = [
     to: "/dashboard",
     label: "Dashboard",
     icon: LayoutDashboard,
+  },
+  {
+    to: "/api-keys",
+    label: "API Keys",
+    icon: KeyRound,
   },
 ] as const;
 
