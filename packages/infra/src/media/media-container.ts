@@ -32,10 +32,12 @@ ENV CHROME_BIN=/usr/bin/chromium
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 `;
 
-const mediaContainerRuntimePath = new URL(
-  "./media-container.runtime.ts",
-  import.meta.url
-).pathname;
+const mediaContainerRuntimeUrl =
+  typeof import.meta.url === "string" ? import.meta.url : "";
+
+const mediaContainerRuntimePath = mediaContainerRuntimeUrl.startsWith("file:")
+  ? new URL("./media-container.runtime.ts", mediaContainerRuntimeUrl).pathname
+  : "./media-container.runtime.ts";
 
 export class MediaContainer extends Container<
   MediaContainer,
