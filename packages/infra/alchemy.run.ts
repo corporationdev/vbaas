@@ -7,10 +7,13 @@ import {
   Vite,
 } from "alchemy/Cloudflare";
 import { config } from "dotenv";
-import { gen } from "effect/Effect";
+import { gen, provide } from "effect/Effect";
 import type { Layer } from "effect/Layer";
 
 import Server from "../../apps/server/src/index";
+import { MediaBucket } from "./src/media/media-bucket";
+import { MediaContainer } from "./src/media/media-container";
+import MediaContainerLive from "./src/media/media-container.runtime";
 
 config({ path: "./.env" });
 config({ path: "../../apps/web/.env" });
@@ -44,12 +47,16 @@ export default Stack(
     state: state(),
   },
   gen(function* () {
+    const mediaBucket = yield* MediaBucket;
+    const mediaContainer = yield* MediaContainer;
     const web = yield* Web;
     const server = yield* Server;
 
     return {
+      mediaBucketName: mediaBucket.bucketName,
+      mediaContainerName: mediaContainer.applicationName,
       serverUrl: server.url,
       webUrl: web.url,
     };
-  })
+  }).pipe(provide(MediaContainerLive))
 );

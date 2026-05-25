@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { initializeBrowserRenderer, launchBrowser } from "./browser-renderer";
@@ -17,9 +17,13 @@ export const renderEncodedVideo = async ({
   plan,
 }: RenderFrameSequenceInput): Promise<RenderEncodedVideoResult> => {
   await mkdir(outputDirectory, { recursive: true });
+  await writeFile(
+    join(outputDirectory, "mediabunny.mjs"),
+    await readMediabunnyBrowserBundle()
+  );
 
   const browser = await launchBrowser();
-  const moduleServer = await createStaticFileServer(getMediabunnyModuleRoot());
+  const moduleServer = await createStaticFileServer(outputDirectory);
 
   try {
     const page = await browser.newPage();
@@ -53,8 +57,28 @@ export const renderEncodedVideo = async ({
   }
 };
 
-const getMediabunnyModuleRoot = (): string =>
-  resolve(import.meta.dirname, "../../node_modules/mediabunny/dist/bundles");
+const readMediabunnyBrowserBundle = async (): Promise<string> => {
+  const candidates = [
+    resolve(
+      process.cwd(),
+      "node_modules/mediabunny/dist/bundles/mediabunny.mjs"
+    ),
+    resolve(
+      import.meta.dirname,
+      "../../node_modules/mediabunny/dist/bundles/mediabunny.mjs"
+    ),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      return await readFile(candidate, "utf8");
+    } catch {
+      // Try the next known install layout.
+    }
+  }
+
+  throw new Error("Unable to locate mediabunny browser bundle.");
+};
 
 async function encodeBrowserVideo({
   durationFrames,

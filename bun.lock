@@ -168,6 +168,7 @@
       },
       "devDependencies": {
         "@vbaas/config": "workspace:*",
+        "@vbaas/core": "workspace:*",
         "alchemy": "catalog:",
         "typescript": "catalog:",
       },
