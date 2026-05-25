@@ -5,7 +5,7 @@ import type {
   AssetResolveFailed,
   CommandExecutionFailed,
   FfmpegFailed,
-  HyperframesFailed,
+  FrameSequenceFailed,
   TempDirectoryFailed,
 } from "./errors";
 import type {
@@ -14,7 +14,8 @@ import type {
   CommandResult,
   FfmpegRenderInput,
   RenderCompositionInput,
-  RenderOverlayInput,
+  RenderFrameSequenceInput,
+  RenderFrameSequenceResult,
   RenderPlan,
   ResolvedAsset,
 } from "./types";
@@ -53,21 +54,6 @@ export class RenderPlanner extends Context.Service<
   RenderPlannerShape
 >()("@vbaas/core/renderer/RenderPlanner") {}
 
-export interface HyperframesShape {
-  readonly renderOverlay: (
-    input: RenderOverlayInput
-  ) => Effect.Effect<string, HyperframesFailed>;
-}
-
-export class Hyperframes extends Context.Service<
-  Hyperframes,
-  HyperframesShape
->()("@vbaas/core/renderer/Hyperframes") {
-  static Noop = Layer.succeed(this, {
-    renderOverlay: ({ outputPath }) => Effect.succeed(outputPath),
-  });
-}
-
 export interface FfmpegShape {
   readonly render: (
     input: FfmpegRenderInput
@@ -81,6 +67,17 @@ export class Ffmpeg extends Context.Service<Ffmpeg, FfmpegShape>()(
     render: () => Effect.void,
   });
 }
+
+export interface FrameSequenceRendererShape {
+  readonly renderFrameSequence: (
+    input: RenderFrameSequenceInput
+  ) => Effect.Effect<RenderFrameSequenceResult, FrameSequenceFailed>;
+}
+
+export class FrameSequenceRenderer extends Context.Service<
+  FrameSequenceRenderer,
+  FrameSequenceRendererShape
+>()("@vbaas/core/renderer/FrameSequenceRenderer") {}
 
 export interface CommandExecutorShape {
   readonly run: (
@@ -111,7 +108,7 @@ export class TempDirectory extends Context.Service<
 export type RendererServices =
   | AssetResolver
   | Ffmpeg
-  | Hyperframes
+  | FrameSequenceRenderer
   | RenderPlanner
   | TempDirectory;
 

@@ -15,7 +15,9 @@ export class AssetResolveFailed extends Data.TaggedError("AssetResolveFailed")<{
   readonly message: string;
 }> {}
 
-export class HyperframesFailed extends Data.TaggedError("HyperframesFailed")<{
+export class FrameSequenceFailed extends Data.TaggedError(
+  "FrameSequenceFailed"
+)<{
   readonly message: string;
 }> {}
 
@@ -43,6 +45,6 @@ export type RenderError =
   | AssetResolveFailed
   | CompositionInvalid
   | FfmpegFailed
-  | HyperframesFailed
+  | FrameSequenceFailed
   | RenderPlanInvalid
   | TempDirectoryFailed;

@@ -17,6 +17,8 @@ const canonicalOutputPath = join(renderTestDir, "canonical-output.mp4");
 const imagePath = join(renderTestDir, "overlay.png");
 const sourcePath = join(renderTestDir, "source.mp4");
 const textDecoder = new TextDecoder();
+const testDurationFrames = 300;
+const testDurationSeconds = 10;
 const tiktokCanvas = {
   height: 1920,
   width: 1080,
@@ -39,7 +41,7 @@ describe("RendererLive integration", () => {
       "-f",
       "lavfi",
       "-i",
-      `color=c=#18204a:s=${tiktokCanvas.width}x${tiktokCanvas.height}:r=30:d=1`,
+      `color=c=#18204a:s=${tiktokCanvas.width}x${tiktokCanvas.height}:r=30:d=${testDurationSeconds}`,
       "-c:v",
       "libx264",
       "-pix_fmt",
@@ -67,7 +69,7 @@ describe("RendererLive integration", () => {
       "-f",
       "lavfi",
       "-i",
-      "sine=frequency=440:duration=1",
+      `sine=frequency=440:duration=${testDurationSeconds}`,
       audioPath,
     ]);
   });
@@ -76,7 +78,7 @@ describe("RendererLive integration", () => {
     const composition = decodeComposition({
       assets: [
         {
-          durationFrames: 30,
+          durationFrames: testDurationFrames,
           fps: 30,
           height: tiktokCanvas.height,
           id: "source-video",
@@ -98,7 +100,7 @@ describe("RendererLive integration", () => {
           width: 360,
         },
         {
-          durationFrames: 30,
+          durationFrames: testDurationFrames,
           id: "tone-audio",
           source: {
             kind: "file",
@@ -117,7 +119,7 @@ describe("RendererLive integration", () => {
         {
           clips: [
             {
-              durationFrames: 30,
+              durationFrames: testDurationFrames,
               id: "background-video",
               media: {
                 assetId: "source-video",
@@ -133,7 +135,7 @@ describe("RendererLive integration", () => {
           clips: [
             {
               assetId: "overlay-image",
-              durationFrames: 30,
+              durationFrames: testDurationFrames,
               id: "image-overlay",
               layout: {
                 fit: "fill",
@@ -152,7 +154,7 @@ describe("RendererLive integration", () => {
         {
           clips: [
             {
-              durationFrames: 30,
+              durationFrames: testDurationFrames,
               id: "tone",
               media: {
                 assetId: "tone-audio",
@@ -168,7 +170,7 @@ describe("RendererLive integration", () => {
         {
           clips: [
             {
-              durationFrames: 30,
+              durationFrames: testDurationFrames,
               id: "title",
               layout: {
                 fit: "fill",
@@ -193,8 +195,8 @@ describe("RendererLive integration", () => {
         {
           cues: [
             {
-              durationFrames: 15,
-              startFrame: 15,
+              durationFrames: 150,
+              startFrame: 150,
               text: "AI VIDEO INFRA",
             },
           ],
@@ -235,7 +237,7 @@ describe("RendererLive integration", () => {
       canonicalOutputPath,
       540,
       1500,
-      0.7
+      5.7
     );
 
     expect(result.outputPath).toBe(canonicalOutputPath);
@@ -251,7 +253,7 @@ describe("RendererLive integration", () => {
           stream.height === tiktokCanvas.height
       )
     ).toBe(true);
-    expect(Number(probe.format.duration)).toBeCloseTo(1, 1);
+    expect(Number(probe.format.duration)).toBeCloseTo(testDurationSeconds, 1);
     expect(imageOverlayPixel.red).toBeGreaterThan(150);
     expect(imageOverlayPixel.blue).toBeLessThan(100);
     expect(hiddenCaptionPixel.red).toBeLessThan(80);
@@ -259,7 +261,7 @@ describe("RendererLive integration", () => {
     expect(captionOverlayPixel.red).toBeGreaterThan(150);
     expect(captionOverlayPixel.green).toBeGreaterThan(150);
     expect(captionOverlayPixel.blue).toBeLessThan(120);
-  }, 60_000);
+  }, 120_000);
 });
 
 const decodeComposition = (input: unknown): VbaasComposition =>

@@ -89,15 +89,18 @@ export interface BuildRenderPlanInput extends RenderCompositionInput {
   readonly resolvedAssets: ReadonlyMap<string, ResolvedAsset>;
 }
 
-export interface RenderOverlayInput {
-  readonly outputPath: string;
+export interface RenderFrameSequenceInput {
+  readonly outputDirectory: string;
   readonly plan: RenderPlan;
-  readonly quality?: RenderQuality;
-  readonly tempDir: string;
+}
+
+export interface RenderFrameSequenceResult {
+  readonly framePattern: string;
+  readonly frameRate: number;
 }
 
 export interface FfmpegRenderInput {
-  readonly overlayPath?: string;
+  readonly frameSequence?: RenderFrameSequenceResult;
   readonly plan: RenderPlan;
   readonly quality?: RenderQuality;
 }

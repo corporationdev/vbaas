@@ -4,13 +4,13 @@ import { validateComposition } from "../schema";
 import { CommandExecutorLive } from "./command";
 import { CompositionInvalid, type RenderError } from "./errors";
 import { FfmpegLive } from "./ffmpeg";
-import { HyperframesLive } from "./hyperframes";
+import { FrameSequenceRendererLive } from "./frame-sequence";
 import { AssetResolverLive, TempDirectoryLive } from "./local";
 import { RenderPlannerLive } from "./plan";
 import {
   AssetResolver,
   Ffmpeg,
-  Hyperframes,
+  FrameSequenceRenderer,
   type RendererServices,
   RenderPlanner,
   TempDirectory,
@@ -37,7 +37,7 @@ export const renderComposition = (
 
     const assetResolver = yield* AssetResolver;
     const ffmpeg = yield* Ffmpeg;
-    const hyperframes = yield* Hyperframes;
+    const frameSequenceRenderer = yield* FrameSequenceRenderer;
     const renderPlanner = yield* RenderPlanner;
     const tempDirectory = yield* TempDirectory;
     const projectRoot = input.projectRoot ?? process.cwd();
@@ -57,18 +57,13 @@ export const renderComposition = (
 
     yield* tempDirectory.withTempDirectory((tempDir) =>
       Effect.gen(function* () {
-        const overlayPath =
-          plan.htmlLayers.length === 0
-            ? undefined
-            : yield* hyperframes.renderOverlay({
-                outputPath: `${tempDir}/overlay.mov`,
-                plan,
-                quality: input.quality,
-                tempDir,
-              });
+        const frameSequence = yield* frameSequenceRenderer.renderFrameSequence({
+          outputDirectory: `${tempDir}/frames`,
+          plan,
+        });
 
         yield* ffmpeg.render({
-          overlayPath,
+          frameSequence,
           plan,
           quality: input.quality,
         });
@@ -85,7 +80,7 @@ export const renderComposition = (
 export const RendererLive = Layer.mergeAll(
   AssetResolverLive,
   FfmpegLive.pipe(Layer.provide(CommandExecutorLive)),
-  HyperframesLive,
+  FrameSequenceRendererLive,
   RenderPlannerLive,
   TempDirectoryLive
 );

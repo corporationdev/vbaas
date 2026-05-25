@@ -5,8 +5,13 @@ import { decodeUnknownSync } from "effect/Schema";
 import { type VbaasComposition, vbaasCompositionSchema } from "../schema";
 import { RenderPlannerLive } from "./plan";
 import { renderComposition } from "./render";
-import { AssetResolver, Ffmpeg, Hyperframes, TempDirectory } from "./services";
-import type { FfmpegRenderInput, RenderOverlayInput } from "./types";
+import {
+  AssetResolver,
+  Ffmpeg,
+  FrameSequenceRenderer,
+  TempDirectory,
+} from "./services";
+import type { FfmpegRenderInput, RenderFrameSequenceInput } from "./types";
 
 describe("renderComposition shell", () => {
   test("fails invalid compositions before render services run", async () => {
@@ -42,11 +47,11 @@ describe("renderComposition shell", () => {
     );
 
     expect(result._tag).toBe("Failure");
-    expect(calls.overlays).toHaveLength(0);
+    expect(calls.frameSequences).toHaveLength(0);
     expect(calls.ffmpeg).toHaveLength(0);
   });
 
-  test("renders Hyperframes overlays before ffmpeg for text layers", async () => {
+  test("renders a full frame sequence before ffmpeg for text layers", async () => {
     const calls = createRenderCalls();
     const result = await Effect.runPromise(
       renderComposition({
@@ -76,13 +81,16 @@ describe("renderComposition shell", () => {
     );
 
     expect(result.durationFrames).toBe(60);
-    expect(calls.overlays).toHaveLength(1);
-    expect(calls.overlays[0]?.plan.htmlLayers).toHaveLength(1);
+    expect(calls.frameSequences).toHaveLength(1);
+    expect(calls.frameSequences[0]?.plan.htmlLayers).toHaveLength(1);
     expect(calls.ffmpeg).toHaveLength(1);
-    expect(calls.ffmpeg[0]?.overlayPath).toBe("/tmp/vbaas-test/overlay.mov");
+    expect(calls.ffmpeg[0]?.frameSequence).toEqual({
+      framePattern: "/tmp/vbaas-test/frames/frame-%06d.png",
+      frameRate: 30,
+    });
   });
 
-  test("renders Hyperframes overlays before ffmpeg for caption cues", async () => {
+  test("renders a full frame sequence before ffmpeg for caption cues", async () => {
     const calls = createRenderCalls();
     const result = await Effect.runPromise(
       renderComposition({
@@ -110,18 +118,21 @@ describe("renderComposition shell", () => {
     );
 
     expect(result.durationFrames).toBe(60);
-    expect(calls.overlays).toHaveLength(1);
-    expect(calls.overlays[0]?.plan.htmlLayers[0]).toEqual(
+    expect(calls.frameSequences).toHaveLength(1);
+    expect(calls.frameSequences[0]?.plan.htmlLayers[0]).toEqual(
       expect.objectContaining({
         id: "caption-track:cue:0",
         kind: "caption",
         text: "Caption cue",
       })
     );
-    expect(calls.ffmpeg[0]?.overlayPath).toBe("/tmp/vbaas-test/overlay.mov");
+    expect(calls.ffmpeg[0]?.frameSequence).toEqual({
+      framePattern: "/tmp/vbaas-test/frames/frame-%06d.png",
+      frameRate: 30,
+    });
   });
 
-  test("skips Hyperframes overlays for media-only compositions", async () => {
+  test("renders a full frame sequence for media-only compositions", async () => {
     const calls = createRenderCalls();
     const result = await Effect.runPromise(
       renderComposition({
@@ -163,9 +174,12 @@ describe("renderComposition shell", () => {
     );
 
     expect(result.durationFrames).toBe(90);
-    expect(calls.overlays).toHaveLength(0);
+    expect(calls.frameSequences).toHaveLength(1);
     expect(calls.ffmpeg).toHaveLength(1);
-    expect(calls.ffmpeg[0]?.overlayPath).toBeUndefined();
+    expect(calls.ffmpeg[0]?.frameSequence).toEqual({
+      framePattern: "/tmp/vbaas-test/frames/frame-%06d.png",
+      frameRate: 30,
+    });
   });
 });
 
@@ -182,12 +196,12 @@ const decodeComposition = (input: unknown): VbaasComposition =>
 
 interface RenderCalls {
   readonly ffmpeg: FfmpegRenderInput[];
-  readonly overlays: RenderOverlayInput[];
+  readonly frameSequences: RenderFrameSequenceInput[];
 }
 
 const createRenderCalls = (): RenderCalls => ({
   ffmpeg: [],
-  overlays: [],
+  frameSequences: [],
 });
 
 const createTestRendererLayer = (calls: RenderCalls) =>
@@ -199,11 +213,14 @@ const createTestRendererLayer = (calls: RenderCalls) =>
           calls.ffmpeg.push(input);
         }),
     }),
-    Layer.succeed(Hyperframes, {
-      renderOverlay: (input) =>
+    Layer.succeed(FrameSequenceRenderer, {
+      renderFrameSequence: (input) =>
         Effect.sync(() => {
-          calls.overlays.push(input);
-          return input.outputPath;
+          calls.frameSequences.push(input);
+          return {
+            framePattern: `${input.outputDirectory}/frame-%06d.png`,
+            frameRate: input.plan.canvas.fps,
+          };
         }),
     }),
     RenderPlannerLive,
